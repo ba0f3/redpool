@@ -10,6 +10,7 @@ type
     conns: seq[RedisConn]
     host: string
     port: Port
+    db: int
     timeout: float
     maxConns: int
 
@@ -20,16 +21,19 @@ proc newRedisConn(pool: RedisPool; taken=false): RedisConn =
   )
 
 proc newRedisPool*(size: int; maxConns=10; timeout=10.0;
-                   host="localhost"; port=6379): RedisPool =
+                   host="localhost"; port=6379; db=0): RedisPool =
   result = RedisPool(
     maxConns: maxConns,
     host: host,
     port: Port(port),
+    db: db,
     timeout: timeout
   )
 
   for n in 0 ..< size:
-    result.conns.add newRedisConn(result)
+    var conn = newRedisConn(result)
+    discard conn.conn.select(db)
+    result.conns.add conn
 
 proc acquire*(pool: RedisPool): Redis =
   let now = epochTime()
@@ -39,6 +43,7 @@ proc acquire*(pool: RedisPool): Redis =
       return rconn.conn
 
   let newConn = newRedisConn(pool, taken=true)
+  discard newConn.conn.select(pool.db)
   pool.conns.add newConn
   return newConn.conn
 
